@@ -20,6 +20,10 @@ app.get('/', (req, res) => {
     res.json({ message: 'API funcionando correctamente' });
 });
 
+app.get('*', (req, res) => {
+    res.sendFile(path.join(__dirname, 'build', 'index.html'));
+});
+
 // Manejo de errores global
 app.use((err, req, res, next) => {
     console.error(err.stack);

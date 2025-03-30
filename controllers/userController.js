@@ -18,10 +18,10 @@ export const userController = {
     // Registro de usuario
     async register(req, res) {
         try {
-            const { nombre, email, password } = req.body;
+            const { nombre, email, password, imagen } = req.body;
 
             // Validaciones
-            if (!nombre || !email || !password) {
+            if (!nombre || !email || !password || !imagen) {
                 return res.status(400).json({ message: 'Todos los campos son requeridos' });
             }
 
@@ -36,8 +36,8 @@ export const userController = {
 
             // Insertar usuario
             const [result] = await pool.query(
-                'INSERT INTO usuarios (nombre, email, password) VALUES (?, ?, ?)',
-                [nombre, email, hashedPassword]
+                'INSERT INTO usuarios (nombre, email, password, imagen) VALUES (?, ?, ?, ?)',
+                [nombre, email, hashedPassword, imagen]
             );
 
             res.status(201).json({ message: 'Usuario registrado exitosamente' });
@@ -108,7 +108,14 @@ export const userController = {
                 [nombre, email, imagen, req.user.id]
             );
 
-            res.json({ message: 'Perfil actualizado exitosamente' });
+            res.status(200).json({
+                message: 'Perfil actualizado exitosamente',
+                user: {
+                    nombre,
+                    email,
+                    imagen
+                }
+            });
         } catch (error) {
             res.status(500).json({ message: error.message });
         }

@@ -6,21 +6,57 @@ const stripe = new Stripe(config.stripe.privateKey)
 export const paymentController = {
   async processPayment(req, res) {
     try {
-      const { amount, currency = "usd", description } = req.body
-      const token = "tok_visa" // Token de prueba
+      // Obtener los datos del cuerpo de la solicitud
+      const { paymentMethodId, amount, currency = "usd", description, email, name, metadata = {} } = req.body
 
-      // Crear el cargo en Stripe
-      const charge = await stripe.charges.create({
+      // Verificar que se proporcionó un ID de método de pago
+      if (!paymentMethodId) {
+        return res.status(400).json({
+          success: false,
+          error: "Se requiere un método de pago",
+        })
+      }
+
+      // Crear el PaymentIntent en Stripe
+      const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount * 100), // Convertir a centavos
         currency,
-        source: token,
-        description: description || "Cargo de prueba",
+        payment_method: paymentMethodId,
+        confirmation_method: "manual",
+        confirm: true,
+        description: description || "Compra en línea",
+        receipt_email: email,
+        metadata: {
+          customer_name: name,
+          ...metadata,
+        },
       })
 
-      res.json({
-        success: true,
-        charge: charge,
-      })
+      // Verificar el estado del PaymentIntent
+      if (paymentIntent.status === "succeeded") {
+        // Pago completado exitosamente
+        return res.json({
+          success: true,
+          paymentIntent: {
+            id: paymentIntent.id,
+            status: paymentIntent.status,
+            amount: paymentIntent.amount,
+            currency: paymentIntent.currency,
+          },
+        })
+      } else if (paymentIntent.status === "requires_action") {
+        // El pago requiere autenticación adicional (3D Secure)
+        return res.json({
+          requires_action: true,
+          payment_intent_client_secret: paymentIntent.client_secret,
+        })
+      } else {
+        // Otro estado del PaymentIntent
+        return res.status(400).json({
+          success: false,
+          error: `Pago no completado. Estado: ${paymentIntent.status}`,
+        })
+      }
     } catch (error) {
       console.error("Error en el proceso de pago:", error)
 
@@ -29,17 +65,30 @@ export const paymentController = {
         // A payment error occurred (card declined, etc.)
         if (error.payment_intent) {
           try {
-            // Get the charge to check if it was blocked for fraud
-            const charge = await stripe.charges.retrieve(error.payment_intent.latest_charge)
+            // Get the payment intent to check if it was blocked for fraud
+            const paymentIntent = await stripe.paymentIntents.retrieve(error.payment_intent.id)
 
-            if (charge && charge.outcome && charge.outcome.type === "blocked") {
+            if (
+              paymentIntent &&
+              paymentIntent.last_payment_error &&
+              paymentIntent.last_payment_error.code === "authentication_required"
+            ) {
+              return res.status(400).json({
+                success: false,
+                error: "This card requires authentication.",
+                requires_action: true,
+                payment_intent_client_secret: paymentIntent.client_secret,
+              })
+            }
+
+            if (paymentIntent && paymentIntent.outcome && paymentIntent.outcome.type === "blocked") {
               return res.status(400).json({
                 success: false,
                 error: "Payment blocked for suspected fraud.",
               })
             }
           } catch (retrieveError) {
-            console.error("Error retrieving charge details:", retrieveError)
+            console.error("Error retrieving payment intent details:", retrieveError)
           }
         }
 

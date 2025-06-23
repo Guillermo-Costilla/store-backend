@@ -1,74 +1,129 @@
-import pool from '../config/database.js';
+import client from "../config/database.js"
 
 export const productController = {
-    // Crear producto
-    async createProduct(req, res) {
-        try {
-            const { nombre, descripcion, precio, stock } = req.body;
-            const userId = req.user.id;
+  // Crear producto (solo admin)
+  async createProduct(req, res) {
+    try {
+      const { nombre, categoria, imagen, descripcion, precio, stock } = req.body
 
-            const [result] = await pool.query(
-                'INSERT INTO productos (nombre, descripcion, precio, stock, usuario_id) VALUES (?, ?, ?, ?, ?)',
-                [nombre, descripcion, precio, stock, userId]
-            );
+      if (req.user.rol !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado. Solo administradores pueden crear productos." })
+      }
 
-            res.status(201).json({ 
-                message: 'Producto creado exitosamente',
-                productId: result.insertId 
-            });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    },
+      await client.execute({
+        sql: "INSERT INTO productos (nombre, categoria, imagen, descripcion, precio, stock) VALUES (?, ?, ?, ?, ?, ?)",
+        args: [nombre, categoria, imagen, descripcion, precio, stock],
+      })
 
-    // Obtener productos
-    async getProducts(req, res) {
-        try {
-            const [products] = await pool.query('SELECT * FROM productos WHERE usuario_id = ?', [req.user.id]);
-            res.json(products);
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    },
-
-    // Actualizar producto
-    async updateProduct(req, res) {
-        try {
-            const { id } = req.params;
-            const { nombre, descripcion, precio, stock } = req.body;
-
-            const [result] = await pool.query(
-                'UPDATE productos SET nombre = ?, descripcion = ?, precio = ?, stock = ? WHERE id = ? AND usuario_id = ?',
-                [nombre, descripcion, precio, stock, id, req.user.id]
-            );
-
-            if (result.affectedRows === 0) {
-                return res.status(404).json({ message: 'Producto no encontrado' });
-            }
-
-            res.json({ message: 'Producto actualizado exitosamente' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
-    },
-
-    // Eliminar producto
-    async deleteProduct(req, res) {
-        try {
-            const { id } = req.params;
-
-            const [result] = await pool.query(
-                'DELETE FROM productos WHERE id = ? AND usuario_id = ?',
-                [id, req.user.id]
-            );
-
-            if (result.affectedRows === 0) {
-                return res.status(404).json({ message: 'Producto no encontrado' });
-            }
-
-            res.json({ message: 'Producto eliminado exitosamente' });
-        } catch (error) {
-            res.status(500).json({ message: error.message });
-        }
+      res.status(201).json({ message: "Producto creado exitosamente" })
+    } catch (error) {
+      res.status(500).json({ message: error.message })
     }
-};
+  },
+
+  // Obtener todos los productos (público)
+  async getProducts(req, res) {
+    try {
+      const { categoria, limit = 50, offset = 0 } = req.query
+
+      let sql = "SELECT * FROM productos WHERE stock > 0"
+      const args = []
+
+      if (categoria) {
+        sql += " AND categoria = ?"
+        args.push(categoria)
+      }
+
+      sql += " ORDER BY fecha_creacion DESC LIMIT ? OFFSET ?"
+      args.push(Number.parseInt(limit), Number.parseInt(offset))
+
+      const result = await client.execute({ sql, args })
+      res.json(result.rows)
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  // Obtener producto por ID
+  async getProductById(req, res) {
+    try {
+      const { id } = req.params
+
+      const result = await client.execute({
+        sql: "SELECT * FROM productos WHERE id = ?",
+        args: [id],
+      })
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ message: "Producto no encontrado" })
+      }
+
+      res.json(result.rows[0])
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  // Actualizar producto (solo admin)
+  async updateProduct(req, res) {
+    try {
+      const { id } = req.params
+      const { nombre, categoria, imagen, descripcion, precio, stock, puntuacion } = req.body
+
+      if (req.user.rol !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado. Solo administradores pueden actualizar productos." })
+      }
+
+      const result = await client.execute({
+        sql: "UPDATE productos SET nombre = ?, categoria = ?, imagen = ?, descripcion = ?, precio = ?, stock = ?, puntuacion = ? WHERE id = ?",
+        args: [nombre, categoria, imagen, descripcion, precio, stock, puntuacion || 0, id],
+      })
+
+      if (result.rowsAffected === 0) {
+        return res.status(404).json({ message: "Producto no encontrado" })
+      }
+
+      res.json({ message: "Producto actualizado exitosamente" })
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  // Eliminar producto (solo admin)
+  async deleteProduct(req, res) {
+    try {
+      const { id } = req.params
+
+      if (req.user.rol !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado. Solo administradores pueden eliminar productos." })
+      }
+
+      const result = await client.execute({
+        sql: "DELETE FROM productos WHERE id = ?",
+        args: [id],
+      })
+
+      if (result.rowsAffected === 0) {
+        return res.status(404).json({ message: "Producto no encontrado" })
+      }
+
+      res.json({ message: "Producto eliminado exitosamente" })
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  // Obtener categorías disponibles
+  async getCategories(req, res) {
+    try {
+      const result = await client.execute({
+        sql: "SELECT DISTINCT categoria FROM productos ORDER BY categoria",
+      })
+
+      const categories = result.rows.map((row) => row.categoria)
+      res.json(categories)
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+}

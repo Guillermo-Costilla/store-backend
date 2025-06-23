@@ -1,12 +1,17 @@
-import express from 'express';
-import { productController } from '../controllers/productController.js';
-import { verifyToken } from '../middlewares/authMiddleware.js';
+import express from "express"
+import { productController } from "../controllers/productController.js"
+import { verifyToken, verifyAdmin } from "../middlewares/authMiddleware.js"
 
-const router = express.Router();
+const router = express.Router()
 
-router.post('/', verifyToken, productController.createProduct);
-router.get('/', verifyToken, productController.getProducts);
-router.put('/:id', verifyToken, productController.updateProduct);
-router.delete('/:id', verifyToken, productController.deleteProduct);
+// Rutas públicas
+router.get("/", productController.getProducts)
+router.get("/categories", productController.getCategories)
+router.get("/:id", productController.getProductById)
 
-export default router;
+// Rutas de administrador
+router.post("/", verifyToken, verifyAdmin, productController.createProduct)
+router.put("/:id", verifyToken, verifyAdmin, productController.updateProduct)
+router.delete("/:id", verifyToken, verifyAdmin, productController.deleteProduct)
+
+export default router

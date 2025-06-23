@@ -1,9 +1,11 @@
-import express from 'express';
-import { paymentController } from '../controllers/paymentController.js';
+import express from "express"
+import { paymentController } from "../controllers/paymentController.js"
 
-const router = express.Router();
+const router = express.Router()
 
-// Solo mantener la ruta de pago
-router.post('/process-pay', paymentController.processPayment);
+// Rutas de pago con Stripe
+router.post("/process-payment", paymentController.processPayment)
+router.post("/create-payment-intent", paymentController.createPaymentIntent)
+router.get("/public-key", paymentController.getPublicKey)
 
-export default router;
+export default router

@@ -1,8 +1,9 @@
 import Stripe from "stripe"
+import dotenv from "dotenv"
 
-const stripe = new Stripe(
-  "sk_test_51R0DGDCr7qNJfD5UHXhNpLJk4xjsAhHNGlOQyKidJctY18YFeiSggaTC8yjBzOa4TLIFIbMz2RaHIVtNghfplDqQ00ReuhkXrT",
-)
+dotenv.config()
+
+const stripe = new Stripe(process.env.STRIPE_PRIVATE_KEY)
 
 export const paymentController = {
   // Crear Payment Intent
@@ -226,7 +227,7 @@ export const paymentController = {
   // Obtener clave pública
   async getPublicKey(req, res) {
     console.log("👉 Se llamó a /public-key")
-    const publicKey = process.env.STRIPE_PUBLIC_KEY || "pk_test_51R0DGDCr7qNJfD5UIOTV4XrH9AMY9IYk6IaenLpZoTlYQAOwNAvWBYJMbcIJhjTlGIaONa80Vi1NB55HxD9hbCN10010FtOXzM"
+    const publicKey = process.env.STRIPE_PUBLIC_KEY
   
     if (!publicKey) {
       return res.status(500).json({

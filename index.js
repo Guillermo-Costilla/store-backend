@@ -82,5 +82,5 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`)
   console.log(`📊 Base de datos: Turso`)
   console.log(`🔐 Autenticación: JWT con roles`)
-  console.log(`💳 Pagos: MercadoPago`)
+  console.log(`💳 Pagos: Stripe`)
 })

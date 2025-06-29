@@ -16,7 +16,7 @@ const app = express()
 app.use(helmet())
 // Configuración de CORS
 const allowedOrigins = [
-  "http://localhost:5173",
+  "http://localhost:3000",
   "https://store-mk.vercel.app"
 ];
 

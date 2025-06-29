@@ -7,6 +7,7 @@ import productRoutes from "./routes/productRoutes.js"
 import orderRoutes from "./routes/orderRoutes.js"
 import { config } from "./config/config.js"
 import paymentRoutes from "./routes/paymentRoutes.js"
+import favoritosRouter from './routes/favoritosRoutes.js';
 
 const app = express()
 
@@ -47,6 +48,7 @@ app.use("/api/users", userRoutes)
 app.use("/api/products", productRoutes)
 app.use("/api/orders", orderRoutes)
 app.use("/api/payments", paymentRoutes)
+app.use('/api/favoritos', favoritosRouter)
 
 // Ruta de prueba
 app.get("/", (req, res) => {

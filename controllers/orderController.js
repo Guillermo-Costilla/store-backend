@@ -1,12 +1,11 @@
 import client from "../config/database.js"
 import Stripe from "stripe"
 import { config } from "../config/config.js"
-import { enviarCorreo } from "../lib/mailer.js" // Envío de correos
+import { enviarCorreo } from "../lib/mailer.js"
 
 const stripe = new Stripe(config.stripe.privateKey)
 
 export const orderController = {
-  // Crear orden
   async createOrder(req, res) {
     try {
       const { productos } = req.body
@@ -99,6 +98,188 @@ export const orderController = {
     }
   },
 
-  // Los demás métodos no se modifican pero se mantienen:
-  // getUserOrders, getAllOrders, updateOrderStatus, confirmPayment, stripeWebhook
+  async getUserOrders(req, res) {
+    try {
+      const usuario_id = req.user.id
+      const result = await client.execute({
+        sql: "SELECT * FROM ordenes WHERE usuario_id = ? ORDER BY fecha_creacion DESC",
+        args: [usuario_id],
+      })
+
+      const ordenes = result.rows.map((orden) => ({
+        ...orden,
+        productos: JSON.parse(orden.productos),
+      }))
+
+      res.json(ordenes)
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  async getAllOrders(req, res) {
+    try {
+      if (req.user.rol !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado" })
+      }
+
+      const { limit = 50, offset = 0, estado, pago } = req.query
+      let sql =
+        "SELECT o.*, u.nombre as usuario_nombre, u.email as usuario_email FROM ordenes o JOIN usuarios u ON o.usuario_id = u.id"
+      const args = []
+      const conditions = []
+
+      if (estado) {
+        conditions.push("o.estado = ?")
+        args.push(estado)
+      }
+      if (pago) {
+        conditions.push("o.pago = ?")
+        args.push(pago)
+      }
+      if (conditions.length > 0) {
+        sql += " WHERE " + conditions.join(" AND ")
+      }
+
+      sql += " ORDER BY o.fecha_creacion DESC LIMIT ? OFFSET ?"
+      args.push(Number.parseInt(limit), Number.parseInt(offset))
+
+      const result = await client.execute({ sql, args })
+
+      const ordenes = result.rows.map((orden) => ({
+        ...orden,
+        productos: JSON.parse(orden.productos),
+      }))
+
+      res.json(ordenes)
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  async updateOrderStatus(req, res) {
+    try {
+      if (req.user.rol !== "admin") {
+        return res.status(403).json({ message: "Acceso denegado" })
+      }
+
+      const { id } = req.params
+      const { estado, pago } = req.body
+
+      const updates = []
+      const args = []
+
+      if (estado) {
+        updates.push("estado = ?")
+        args.push(estado)
+      }
+      if (pago) {
+        updates.push("pago = ?")
+        args.push(pago)
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ message: "Debe proporcionar al menos un campo para actualizar" })
+      }
+
+      args.push(id)
+
+      const result = await client.execute({
+        sql: `UPDATE ordenes SET ${updates.join(", ")} WHERE id = ?`,
+        args,
+      })
+
+      if (result.rowsAffected === 0) {
+        return res.status(404).json({ message: "Orden no encontrada" })
+      }
+
+      if (estado === "enviado") {
+        const orderResult = await client.execute({
+          sql: "SELECT productos FROM ordenes WHERE id = ?",
+          args: [id],
+        })
+
+        const productos = JSON.parse(orderResult.rows[0].productos)
+
+        for (const item of productos) {
+          await client.execute({
+            sql: "UPDATE productos SET stock = stock - ? WHERE id = ?",
+            args: [item.cantidad, item.id],
+          })
+        }
+      }
+
+      res.json({ message: "Estado de orden actualizado exitosamente" })
+    } catch (error) {
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  async confirmPayment(req, res) {
+    try {
+      const { payment_intent_id } = req.body
+      const paymentIntent = await stripe.paymentIntents.retrieve(payment_intent_id)
+
+      if (paymentIntent.status === "succeeded") {
+        const orden_id = paymentIntent.metadata.orden_id
+
+        await client.execute({
+          sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
+          args: ["pagado", orden_id],
+        })
+
+        res.json({ message: "Pago confirmado exitosamente" })
+      } else {
+        res.status(400).json({ message: "El pago no fue exitoso" })
+      }
+    } catch (error) {
+      console.error("Error confirmando pago:", error)
+      res.status(500).json({ message: error.message })
+    }
+  },
+
+  async stripeWebhook(req, res) {
+    const sig = req.headers["stripe-signature"]
+    const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+    let event
+
+    try {
+      event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret)
+    } catch (err) {
+      console.log(`Webhook signature verification failed.`, err.message)
+      return res.status(400).send(`Webhook Error: ${err.message}`)
+    }
+
+    switch (event.type) {
+      case "payment_intent.succeeded":
+        const paymentIntent = event.data.object
+        const orden_id = paymentIntent.metadata.orden_id
+
+        if (orden_id) {
+          await client.execute({
+            sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
+            args: ["pagado", orden_id],
+          })
+        }
+        break
+
+      case "payment_intent.payment_failed":
+        const failedPayment = event.data.object
+        const failed_orden_id = failedPayment.metadata.orden_id
+
+        if (failed_orden_id) {
+          await client.execute({
+            sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
+            args: ["cancelado", failed_orden_id],
+          })
+        }
+        break
+
+      default:
+        console.log(`Unhandled event type ${event.type}`)
+    }
+
+    res.json({ received: true })
+  }
 }

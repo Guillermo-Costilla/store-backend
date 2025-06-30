@@ -23,4 +23,8 @@ export const config = {
   server: {
     port: process.env.PORT || 5000,
   },
+  email: {
+    authUser: process.env.EMAIL_AUTH_USER,
+    authPass: process.env.EMAIL_AUTH_PASS,
+  }
 }

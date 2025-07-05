@@ -2,6 +2,7 @@ import client from "../config/database.js"
 import Stripe from "stripe"
 import { config } from "../config/config.js"
 import { enviarCorreo } from "../lib/mailer.js"
+import { randomUUID } from 'crypto'
 
 const stripe = new Stripe(config.stripe.privateKey)
 
@@ -47,16 +48,18 @@ export const orderController = {
         })
       }
 
+      const orden_id = randomUUID()
+
       const orderResult = await client.execute({
-        sql: "INSERT INTO ordenes (usuario_id, total, productos) VALUES (?, ?, ?)",
-        args: [usuario_id, total, JSON.stringify(productosDetalle)],
+        sql: "INSERT INTO ordenes (id, usuario_id, total, productos) VALUES (?, ?, ?, ?)",
+        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle)],
       })
 
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(total * 100),
         currency: "usd",
         metadata: {
-          orden_id: orderResult.meta.last_row_id.toString(),
+          orden_id: orden_id,
           usuario_id,
         },
         automatic_payment_methods: { enabled: true },
@@ -64,7 +67,7 @@ export const orderController = {
 
       await client.execute({
         sql: "UPDATE ordenes SET stripe_payment_intent_id = ? WHERE id = ?",
-        args: [paymentIntent.id, orderResult.meta.last_row_id],
+        args: [paymentIntent.id, orden_id],
       })
 
       const usuarioResult = await client.execute({
@@ -79,7 +82,7 @@ export const orderController = {
         subject: "🎉 Confirmación de tu orden en Tienda Online",
         html: `
           <h2>Hola ${usuario.nombre}, ¡gracias por tu compra!</h2>
-          <p>Tu orden <strong>#${orderResult.meta.last_row_id}</strong> fue creada por un total de <strong>$${total}</strong>.</p>
+          <p>Tu orden <strong>#${orden_id}</strong> fue creada por un total de <strong>$${total}</strong>.</p>
           <p>Podés seguir el estado de tu orden desde tu cuenta.</p>
           <p>Nos alegra tenerte como cliente 💙</p>
         `,
@@ -87,7 +90,7 @@ export const orderController = {
 
       res.status(201).json({
         message: "Orden creada exitosamente",
-        orden_id: orderResult.meta.last_row_id,
+        orden_id,
         total,
         client_secret: paymentIntent.client_secret,
         payment_intent_id: paymentIntent.id,

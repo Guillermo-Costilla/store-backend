@@ -5,13 +5,12 @@ import rateLimit from "express-rate-limit"
 import userRoutes from "./routes/userRoutes.js"
 import productRoutes from "./routes/productRoutes.js"
 import orderRoutes from "./routes/orderRoutes.js"
-
-
 import { config } from "./config/config.js"
 import paymentRoutes from "./routes/paymentRoutes.js"
 import favoritosRouter from './routes/favoritosRoutes.js';
 import adminRouter from './routes/adminRoutes.js'
 import testRouter from "./routes/testRoutes.js"
+import { paymentController } from "./controllers/paymentController.js"
 
 
 const app = express()

@@ -247,8 +247,8 @@ export const paymentController = {
     const sig = req.headers['stripe-signature']
     let event
     try {
-      event = require('stripe')(process.env.STRIPE_PRIVATE_KEY).webhooks.constructEvent(
-        req.rawBody || req.body, // depende de cómo se configure el body parser
+      event = stripe.webhooks.constructEvent(
+        req.body,
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
       )

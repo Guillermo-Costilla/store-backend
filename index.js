@@ -49,6 +49,7 @@ app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ extended: true }))
 
 // Rutas
+app.post("/api/payments/webhook/stripe", express.raw({ type: "application/json" }), paymentController.stripeWebhook);
 app.use("/api/users", userRoutes)
 app.use("/api/products", productRoutes)
 app.use("/api/orders", orderRoutes)

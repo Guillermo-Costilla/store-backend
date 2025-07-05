@@ -240,7 +240,38 @@ export const paymentController = {
       success: true,
       public_key: publicKey,
     })
-  }
-  ,
+  },
+
+  // Webhook de Stripe
+  async stripeWebhook(req, res) {
+    const sig = req.headers['stripe-signature']
+    let event
+    try {
+      event = require('stripe')(process.env.STRIPE_PRIVATE_KEY).webhooks.constructEvent(
+        req.rawBody || req.body, // depende de cómo se configure el body parser
+        sig,
+        process.env.STRIPE_WEBHOOK_SECRET
+      )
+    } catch (err) {
+      console.error('❌ Firma de webhook inválida:', err.message)
+      return res.status(400).send(`Webhook Error: ${err.message}`)
+    }
+
+    // Procesar eventos relevantes
+    switch (event.type) {
+      case 'payment_intent.succeeded':
+        console.log('✅ Pago exitoso:', event.data.object.id)
+        // Aquí puedes actualizar la orden en la base de datos, etc.
+        break
+      case 'payment_intent.payment_failed':
+        console.log('❌ Pago fallido:', event.data.object.id)
+        break
+      default:
+        console.log(`🔔 Evento recibido: ${event.type}`)
+    }
+    // Log completo del evento
+    console.log('Evento recibido:', event)
+    res.status(200).json({ received: true })
+  },
 }
 

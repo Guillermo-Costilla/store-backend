@@ -6,9 +6,12 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "setup": "node scripts/setup-database.js",
-    "seed": "node scripts/seed-products.js",
-    "clear-products": "node scripts/clear-products.js"
+    "setup": "node scripts/setup-database-enhanced.js",
+    "seed": "node scripts/seed-products-enhanced.js",
+    "seed-additional": "node scripts/seed-additional-products.js",
+    "update-products": "node scripts/update-all-products.js",
+    "clear-products": "node scripts/clear-products.js",
+    "full-setup": "npm run setup && npm run seed && npm run seed-additional && npm run update-products"
   },
   "repository": {
     "type": "git",

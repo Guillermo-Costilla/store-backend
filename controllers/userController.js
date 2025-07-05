@@ -59,7 +59,7 @@ export const userController = {
 
       const user = result.rows[0]
 
-      if (!user || !(await bcrypt.compare(password, user.contraseña))) {
+      if (!user || !bcrypt.compare(password, user.contraseña)) {
         return res.status(401).json({ message: "Credenciales inválidas" })
       }
 

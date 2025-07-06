@@ -79,10 +79,10 @@ export const orderController = {
 
       await enviarCorreo({
         to: usuario.email,
-        subject: "🎉 Confirmación de tu orden en Tienda Online",
+        subject: "🎉 Confirmación de tu orden en Store",
         html: `
           <h2>Hola ${usuario.nombre}, ¡gracias por tu compra!</h2>
-          <p>Tu orden <strong>#${orden_id}</strong> fue creada por un total de <strong>$${total}</strong>.</p>
+          <p>Tu orden <strong>#${orden_id}</strong> fue creada por un total de <strong>$${Number(total).toFixed(2)}</strong>.</p>
           <p>Podés seguir el estado de tu orden desde tu cuenta.</p>
           <p>Nos alegra tenerte como cliente 💙</p>
         `,

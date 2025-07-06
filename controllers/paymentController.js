@@ -244,6 +244,7 @@ export const paymentController = {
 
   // Webhook de Stripe
   async stripeWebhook(req, res) {
+    console.log("[WEBHOOK] Webhook recibido de Stripe")
     const sig = req.headers['stripe-signature']
     let event
     try {
@@ -252,6 +253,8 @@ export const paymentController = {
         sig,
         process.env.STRIPE_WEBHOOK_SECRET
       )
+      console.log("[WEBHOOK] Firma verificada correctamente")
+      console.log("[WEBHOOK] Tipo de evento:", event.type)
     } catch (err) {
       console.error('❌ Firma de webhook inválida:', err.message)
       return res.status(400).send(`Webhook Error: ${err.message}`)
@@ -260,17 +263,56 @@ export const paymentController = {
     // Procesar eventos relevantes
     switch (event.type) {
       case 'payment_intent.succeeded':
-        console.log('✅ Pago exitoso:', event.data.object.id)
-        // Aquí puedes actualizar la orden en la base de datos, etc.
+        try {
+          const paymentIntent = event.data.object
+          const orden_id = paymentIntent.metadata?.orden_id
+          console.log('✅ Pago exitoso:', paymentIntent.id, 'para orden:', orden_id)
+
+          if (orden_id) {
+            // Importar el cliente de base de datos
+            const client = (await import('../config/database.js')).default
+            const result = await client.execute({
+              sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
+              args: ["pagado", orden_id],
+            })
+            console.log("[WEBHOOK] Orden actualizada a pagado:", result.rowsAffected, "filas afectadas")
+            if (result.rowsAffected === 0) {
+              console.error("[WEBHOOK] No se encontró la orden para actualizar:", orden_id)
+            }
+          } else {
+            console.error("[WEBHOOK] No se encontró orden_id en metadata del paymentIntent")
+          }
+        } catch (err) {
+          console.error("[WEBHOOK] Error actualizando la orden:", err)
+        }
         break
       case 'payment_intent.payment_failed':
-        console.log('❌ Pago fallido:', event.data.object.id)
+        try {
+          const failedPayment = event.data.object
+          const failed_orden_id = failedPayment.metadata?.orden_id
+          console.log('❌ Pago fallido:', failedPayment.id, 'para orden:', failed_orden_id)
+
+          if (failed_orden_id) {
+            const client = (await import('../config/database.js')).default
+            const result = await client.execute({
+              sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
+              args: ["cancelado", failed_orden_id],
+            })
+            console.log("[WEBHOOK] Orden actualizada a cancelado:", result.rowsAffected, "filas afectadas")
+            if (result.rowsAffected === 0) {
+              console.error("[WEBHOOK] No se encontró la orden para actualizar (fallido):", failed_orden_id)
+            }
+          } else {
+            console.error("[WEBHOOK] No se encontró orden_id en metadata del paymentIntent (fallido)")
+          }
+        } catch (err) {
+          console.error("[WEBHOOK] Error actualizando la orden (fallido):", err)
+        }
         break
       default:
         console.log(`🔔 Evento recibido: ${event.type}`)
     }
-    // Log completo del evento
-    console.log('Evento recibido:', event)
+    
     res.status(200).json({ received: true })
   },
 }

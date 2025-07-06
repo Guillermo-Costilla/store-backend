@@ -242,15 +242,22 @@ export const orderController = {
   },
 
   async stripeWebhook(req, res) {
+    console.log("[WEBHOOK] Webhook recibido de Stripe")
+    console.log("[WEBHOOK] Tipo de evento:", req.headers['stripe-signature'] ? 'Con firma' : 'Sin firma')
+    
     const sig = req.headers["stripe-signature"]
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET
+
+    console.log("[WEBHOOK] Endpoint secret configurado:", endpointSecret ? 'Sí' : 'No')
 
     let event
 
     try {
       event = stripe.webhooks.constructEvent(req.body, sig, endpointSecret)
+      console.log("[WEBHOOK] Firma verificada correctamente")
+      console.log("[WEBHOOK] Tipo de evento:", event.type)
     } catch (err) {
-      console.log(`Webhook signature verification failed.`, err.message)
+      console.log(`[WEBHOOK] Error verificando firma:`, err.message)
       return res.status(400).send(`Webhook Error: ${err.message}`)
     }
 

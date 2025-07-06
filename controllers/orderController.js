@@ -256,31 +256,53 @@ export const orderController = {
 
     switch (event.type) {
       case "payment_intent.succeeded":
-        const paymentIntent = event.data.object
-        const orden_id = paymentIntent.metadata.orden_id
+        try {
+          const paymentIntent = event.data.object
+          const orden_id = paymentIntent.metadata?.orden_id
+          console.log("[WEBHOOK] payment_intent.succeeded para orden:", orden_id, "Estado:", paymentIntent.status)
 
-        if (orden_id) {
-          await client.execute({
-            sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
-            args: ["pagado", orden_id],
-          })
+          if (orden_id) {
+            const result = await client.execute({
+              sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
+              args: ["pagado", orden_id],
+            })
+            console.log("[WEBHOOK] Resultado del update:", result)
+            if (result.rowsAffected === 0) {
+              console.error("[WEBHOOK] No se encontró la orden para actualizar:", orden_id)
+            }
+          } else {
+            console.error("[WEBHOOK] No se encontró orden_id en metadata del paymentIntent")
+          }
+        } catch (err) {
+          console.error("[WEBHOOK] Error actualizando la orden:", err)
         }
         break
 
       case "payment_intent.payment_failed":
-        const failedPayment = event.data.object
-        const failed_orden_id = failedPayment.metadata.orden_id
+        try {
+          const failedPayment = event.data.object
+          const failed_orden_id = failedPayment.metadata?.orden_id
+          console.log("[WEBHOOK] payment_intent.payment_failed para orden:", failed_orden_id)
 
-        if (failed_orden_id) {
-          await client.execute({
-            sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
-            args: ["cancelado", failed_orden_id],
-          })
+          if (failed_orden_id) {
+            const result = await client.execute({
+              sql: "UPDATE ordenes SET pago = ? WHERE id = ?",
+              args: ["cancelado", failed_orden_id],
+            })
+            console.log("[WEBHOOK] Resultado del update (fallido):", result)
+            if (result.rowsAffected === 0) {
+              console.error("[WEBHOOK] No se encontró la orden para actualizar (fallido):", failed_orden_id)
+            }
+          } else {
+            console.error("[WEBHOOK] No se encontró orden_id en metadata del paymentIntent (fallido)")
+          }
+        } catch (err) {
+          console.error("[WEBHOOK] Error actualizando la orden (fallido):", err)
         }
         break
 
       default:
-        console.log(`Unhandled event type ${event.type}`)
+        console.log(`[WEBHOOK] Unhandled event type ${event.type}`)
     }
 
     res.json({ received: true })

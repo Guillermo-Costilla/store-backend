@@ -161,25 +161,36 @@ export async function obtenerOrdenesCompletas(req, res) {
 
     const result = await client.execute({ sql, args });
 
-    const ordenes = result.rows.map((orden) => ({
-      ...orden,
-      productos: JSON.parse(orden.productos),
-      // Información del cliente
-      cliente: {
-        nombre: orden.cliente_nombre,
-        email: orden.cliente_email,
-        pais: orden.cliente_pais,
-        localidad: orden.cliente_localidad,
-        codigo_postal: orden.cliente_codigo_postal
-      },
-      // Información de envío
-      direccion_envio: {
-        direccion: orden.direccion,
-        localidad: orden.localidad,
-        provincia: orden.provincia,
-        codigo_postal: orden.codigo_postal
+    const ordenes = result.rows.map((orden) => {
+      const productos = JSON.parse(orden.productos);
+      // Resumen de productos: nombre, cantidad, precio, subtotal, imagen
+      const resumen_productos = productos.map(p => ({
+        nombre: p.nombre,
+        cantidad: p.cantidad,
+        precio: p.precio,
+        subtotal: p.subtotal,
+        imagen: p.imagen // si existe, si no, omitir
+      }));
+      return {
+        ...orden,
+        productos: resumen_productos,
+        // Información del cliente
+        cliente: {
+          nombre: orden.cliente_nombre,
+          email: orden.cliente_email,
+          pais: orden.cliente_pais,
+          localidad: orden.cliente_localidad,
+          codigo_postal: orden.cliente_codigo_postal
+        },
+        // Información de envío
+        direccion_envio: {
+          direccion: orden.direccion,
+          localidad: orden.localidad,
+          provincia: orden.provincia,
+          codigo_postal: orden.codigo_postal
+        }
       }
-    }));
+    });
 
     res.json({
       success: true,
@@ -195,6 +206,27 @@ export async function obtenerOrdenesCompletas(req, res) {
       success: false,
       error: 'Error interno del servidor al obtener órdenes' 
     });
+  }
+}
+
+// Nuevo endpoint para obtener todos los usuarios registrados (solo admin)
+export async function obtenerUsuariosAdmin(req, res) {
+  try {
+    if (req.user.rol !== 'admin') {
+      return res.status(403).json({ error: 'Acceso denegado. Solo administradores pueden ver los usuarios.' });
+    }
+    const result = await client.execute(`
+      SELECT *
+      FROM usuarios
+      ORDER BY fecha_creacion DESC
+    `);
+    res.json({
+      success: true,
+      usuarios: result.rows
+    });
+  } catch (error) {
+    console.error('❌ Error obteniendo usuarios:', error);
+    res.status(500).json({ success: false, error: 'Error interno del servidor al obtener usuarios' });
   }
 }
 

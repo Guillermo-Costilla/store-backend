@@ -2,7 +2,8 @@ import express from 'express';
 import { 
   obtenerMétricasAdmin, 
   obtenerOrdenesCompletas, 
-  obtenerOrdenDetallada 
+  obtenerOrdenDetallada,
+  obtenerUsuariosAdmin
 } from '../controllers/adminController.js';
 import { verifyAdmin, verifyToken } from '../middlewares/authMiddleware.js';
 
@@ -20,5 +21,8 @@ router.get('/orders', obtenerOrdenesCompletas);
 
 // Obtener orden específica con información detallada
 router.get('/orders/:id', obtenerOrdenDetallada);
+
+// Obtener todos los usuarios registrados (solo admin)
+router.get('/users', obtenerUsuariosAdmin);
 
 export default router;

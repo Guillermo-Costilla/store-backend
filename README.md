@@ -117,6 +117,10 @@ Utiliza esta URL como base para todas las peticiones a los endpoints.
 | pago                     | TEXT    | Estado de pago ('pendiente', 'pagado', 'cancelado')                    |
 | productos                | TEXT    | Array JSON de productos (id, nombre, precio, cantidad, subtotal, etc.) |
 | stripe_payment_intent_id | TEXT    | ID de PaymentIntent de Stripe                                          |
+| direccion                | TEXT    | Dirección de envío                                                     |
+| localidad                | TEXT    | Localidad de envío                                                     |
+| provincia                | TEXT    | Provincia de envío                                                     |
+| codigo_postal            | TEXT    | Código postal de envío                                                 |
 | fecha_creacion           | TEXT    | Fecha de creación (ISO string)                                         |
 
 ### Tabla: `favoritos`
@@ -237,7 +241,11 @@ Utiliza esta URL como base para todas las peticiones a los endpoints.
       "productos": [
         { "producto_id": "uuid1", "cantidad": 2 },
         { "producto_id": "uuid2", "cantidad": 1 }
-      ]
+      ],
+      "direccion": "Av. Corrientes 1234",
+      "localidad": "Buenos Aires",
+      "provincia": "Buenos Aires",
+      "codigo_postal": "1043"
     }
     ```
 - **GET /orders/my-orders** (protegido)
@@ -284,8 +292,64 @@ Utiliza esta URL como base para todas las peticiones a los endpoints.
       "customer": { "email": "juan@mail.com", "name": "Juan" }
     }
     ```
+- **POST /payments/confirm-payment**
+  - Confirma un pago que requiere confirmación adicional.
+  - Body JSON:
+    ```json
+    {
+      "payment_intent_id": "pi_xxx",
+      "payment_method_id": "pm_xxx"
+    }
+    ```
+- **GET /payments/payment-status/:payment_intent_id**
+  - Obtiene el estado actual de un pago.
 - **GET /payments/public-key**
   - Devuelve la clave pública de Stripe.
+
+#### Manejo de errores de pago
+
+**Error común: `"status": "requires_payment_method"`**
+
+Este error indica que el método de pago fue rechazado o necesita información adicional. Para solucionarlo:
+
+1. **Verificar los datos de la tarjeta:**
+
+   - Asegúrate de que el número de tarjeta sea correcto
+   - Verifica la fecha de vencimiento
+   - Confirma el código CVV
+   - Usa una tarjeta de prueba válida de Stripe
+
+2. **Tarjetas de prueba recomendadas:**
+
+   - **Visa:** `4242424242424242`
+   - **Mastercard:** `5555555555554444`
+   - **Código CVV:** `123`
+   - **Fecha de vencimiento:** Cualquier fecha futura
+
+3. **Flujo de manejo en el frontend:**
+   ```javascript
+   // Ejemplo de manejo del error
+   fetch("/api/payments/process-payment", {
+     method: "POST",
+     headers: { "Content-Type": "application/json" },
+     body: JSON.stringify(paymentData),
+   })
+     .then((response) => response.json())
+     .then((data) => {
+       if (data.success) {
+         // Pago exitoso
+         console.log("Pago completado:", data.payment_intent);
+       } else if (data.code === "PAYMENT_METHOD_REJECTED") {
+         // Mostrar mensaje al usuario para que use otra tarjeta
+         alert(
+           "La tarjeta fue rechazada. Por favor, intenta con otra tarjeta."
+         );
+       } else {
+         // Otro tipo de error
+         alert("Error en el pago: " + data.error);
+       }
+     });
+   ```
 
 ### Favoritos
 
@@ -307,12 +371,30 @@ Utiliza esta URL como base para todas las peticiones a los endpoints.
 ### Admin
 
 - **GET /admin/dashboard** (admin)
+
   - Devuelve métricas administrativas:
     - Total de ventas
     - Total de órdenes
     - Órdenes por estado
     - Productos más vendidos
     - Productos con stock bajo
+    - Órdenes recientes con información del cliente y dirección de envío
+
+- **GET /admin/orders** (admin)
+
+  - Devuelve todas las órdenes con información completa:
+    - Datos del cliente (nombre, email, país, localidad)
+    - Dirección de envío completa
+    - Productos de la orden
+    - Estado y pago
+  - Query params opcionales: `limit`, `offset`, `estado`, `pago`
+
+- **GET /admin/orders/:id** (admin)
+  - Devuelve una orden específica con información detallada:
+    - Información completa del cliente
+    - Dirección de envío
+    - Productos detallados
+    - Historial de estados
 
 ### Test
 
@@ -348,6 +430,131 @@ curl -X POST https://store-backend-pied.vercel.app/api/products/ \
   -d '{"nombre":"Remera","categoria":"Ropa","imagen":"https://...","imagenes":["https://...","https://...","https://..."],"descripcion":"Remera 100% algodón","precio":2500,"descuento":10,"stock":10}'
 ```
 
+### Crear orden con datos de envío
+
+```bash
+curl -X POST https://store-backend-pied.vercel.app/api/orders/ \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <token_usuario>" \
+  -d '{
+    "productos": [
+      { "producto_id": "uuid1", "cantidad": 2 },
+      { "producto_id": "uuid2", "cantidad": 1 }
+    ],
+    "direccion": "Av. Corrientes 1234",
+    "localidad": "Buenos Aires",
+    "provincia": "Buenos Aires",
+    "codigo_postal": "1043"
+  }'
+```
+
+### Ver órdenes completas (admin)
+
+```bash
+curl -X GET https://store-backend-pied.vercel.app/api/admin/orders \
+  -H "Authorization: Bearer <token_admin>"
+```
+
+### Ver orden específica (admin)
+
+```bash
+curl -X GET https://store-backend-pied.vercel.app/api/admin/orders/orden_id \
+  -H "Authorization: Bearer <token_admin>"
+```
+
+#### Ejemplo de respuesta del dashboard mejorado:
+
+```json
+{
+  "success": true,
+  "metricas": {
+    "ventas": {
+      "total": 17912.59,
+      "ultimo_mes": 8500.0
+    },
+    "ordenes": {
+      "total": 16,
+      "por_estado": [{ "estado": "pendiente_envio", "cantidad": 16 }],
+      "por_pago": [
+        { "pago": "pagado", "cantidad": 10 },
+        { "pago": "pendiente", "cantidad": 6 }
+      ],
+      "recientes": [
+        {
+          "id": "orden-uuid-1",
+          "total": 2500.0,
+          "estado": "pendiente_envio",
+          "pago": "pagado",
+          "fecha_creacion": "2024-01-15T10:30:00Z",
+          "direccion": "Av. Corrientes 1234",
+          "localidad": "Buenos Aires",
+          "provincia": "Buenos Aires",
+          "codigo_postal": "1043",
+          "cliente_nombre": "Juan Pérez",
+          "cliente_email": "juan@mail.com",
+          "cliente_pais": "Argentina"
+        }
+      ]
+    },
+    "productos": {
+      "total": 25,
+      "stock_bajo": [
+        {
+          "id": "prod-uuid-1",
+          "nombre": "Remera",
+          "stock": 2,
+          "precio": 2500.0
+        }
+      ]
+    }
+  }
+}
+```
+
+#### Ejemplo de respuesta de órdenes completas:
+
+```json
+{
+  "success": true,
+  "ordenes": [
+    {
+      "id": "orden-uuid-1",
+      "usuario_id": "user-uuid-1",
+      "total": 2500.0,
+      "estado": "pendiente_envio",
+      "pago": "pagado",
+      "productos": [
+        {
+          "id": "prod-uuid-1",
+          "nombre": "Remera",
+          "precio": 2500.0,
+          "cantidad": 1,
+          "subtotal": 2500.0
+        }
+      ],
+      "stripe_payment_intent_id": "pi_xxx",
+      "fecha_creacion": "2024-01-15T10:30:00Z",
+      "cliente": {
+        "nombre": "Juan Pérez",
+        "email": "juan@mail.com",
+        "pais": "Argentina",
+        "localidad": "Buenos Aires",
+        "codigo_postal": "1000"
+      },
+      "direccion_envio": {
+        "direccion": "Av. Corrientes 1234",
+        "localidad": "Buenos Aires",
+        "provincia": "Buenos Aires",
+        "codigo_postal": "1043"
+      }
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
 ---
 
 ## Notas y Recomendaciones
@@ -369,3 +576,75 @@ curl -X POST https://store-backend-pied.vercel.app/api/products/ \
 ## Autor
 
 - Desarrollado por Guillermo Costilla.
+
+---
+
+## Acceso a paneles de admin desde el frontend
+
+### 1. Autenticación y obtención de token
+
+El frontend debe autenticar al usuario mediante `/users/login`. El backend devolverá un token JWT. Este token debe guardarse (por ejemplo, en localStorage o cookies seguras).
+
+### 2. Envío del token en las peticiones
+
+Para acceder a cualquier endpoint de admin, el frontend debe enviar el token en el header:
+
+```
+Authorization: Bearer <token>
+```
+
+### 3. Verificación de permisos en el frontend
+
+- El frontend debe decodificar el token JWT (puede usar librerías como `jwt-decode`) para verificar que el usuario tiene el campo `rol: "admin"`.
+- Si el usuario no es admin, debe ocultar o bloquear el acceso a los paneles de administración.
+
+### 4. Manejo de errores de acceso
+
+- Si el backend responde con `401 Unauthorized` (token inválido o no enviado), el frontend debe redirigir al login.
+- Si responde con `403 Forbidden` (no es admin), debe mostrar un mensaje de acceso denegado.
+
+### 5. Endpoints de admin disponibles
+
+- **GET `/admin/dashboard`**  
+  Devuelve métricas administrativas (ventas, órdenes, productos más vendidos, etc.).
+
+- **POST `/products/`**, **PUT `/products/:id`**, **DELETE `/products/:id`**  
+  Crear, actualizar o eliminar productos.
+
+- **GET `/orders/all`**  
+  Listar todas las órdenes.
+
+- **PUT `/orders/:id/status`**  
+  Actualizar el estado o pago de una orden.
+
+### 6. Ejemplo de flujo desde el frontend
+
+```js
+// Ejemplo en React usando fetch
+const token = localStorage.getItem("token");
+
+fetch("https://store-backend-pied.vercel.app/api/admin/dashboard", {
+  headers: {
+    Authorization: `Bearer ${token}`,
+  },
+})
+  .then((res) => {
+    if (res.status === 401) throw new Error("No autenticado");
+    if (res.status === 403) throw new Error("Acceso denegado");
+    return res.json();
+  })
+  .then((data) => {
+    // Mostrar métricas en el panel admin
+  })
+  .catch((err) => {
+    // Redirigir o mostrar mensaje de error
+  });
+```
+
+### 7. Notas adicionales
+
+- El backend ya valida el rol admin en los endpoints críticos.
+- El frontend debe gestionar la sesión y el rol para mostrar u ocultar los paneles de administración.
+- El usuario admin por defecto es:  
+  Email: `admin@tienda.com`  
+  Contraseña: `password123`

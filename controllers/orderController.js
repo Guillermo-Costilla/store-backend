@@ -9,11 +9,18 @@ const stripe = new Stripe(config.stripe.privateKey)
 export const orderController = {
   async createOrder(req, res) {
     try {
-      const { productos } = req.body
+      const { productos, direccion, localidad, provincia, codigo_postal } = req.body
       const usuario_id = req.user.id
 
       if (!productos || productos.length === 0) {
         return res.status(400).json({ message: "Debe incluir al menos un producto" })
+      }
+
+      // Validar datos de envío
+      if (!direccion || !localidad || !provincia || !codigo_postal) {
+        return res.status(400).json({ 
+          message: "Debe incluir todos los datos de envío: direccion, localidad, provincia, codigo_postal" 
+        })
       }
 
       let total = 0
@@ -51,8 +58,8 @@ export const orderController = {
       const orden_id = randomUUID()
 
       const orderResult = await client.execute({
-        sql: "INSERT INTO ordenes (id, usuario_id, total, productos) VALUES (?, ?, ?, ?)",
-        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle)],
+        sql: "INSERT INTO ordenes (id, usuario_id, total, productos, direccion, localidad, provincia, codigo_postal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle), direccion, localidad, provincia, codigo_postal],
       })
 
       const paymentIntent = await stripe.paymentIntents.create({

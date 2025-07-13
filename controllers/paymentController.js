@@ -139,13 +139,22 @@ export const paymentController = {
         })
       }
 
-      // Crear y confirmar Payment Intent en un solo paso
+      // Validar monto
+      if (!amount || amount <= 0) {
+        return res.status(400).json({
+          success: false,
+          error: "El monto debe ser mayor a 0",
+          code: "INVALID_AMOUNT",
+        })
+      }
+
+      // Crear Payment Intent sin confirmar automáticamente
       const paymentIntent = await stripe.paymentIntents.create({
         amount: Math.round(amount),
         currency,
         description: description || `Compra de ${items.length} producto(s)`,
         payment_method: token,
-        confirm: true,
+        confirm: false, // No confirmar automáticamente
         receipt_email: customer.email || undefined,
         metadata: {
           customer_email: customer.email || "",
@@ -158,19 +167,71 @@ export const paymentController = {
         },
       })
 
-      console.log("Pago procesado exitosamente:", paymentIntent.id)
+      console.log("Payment Intent creado:", paymentIntent.id, "Estado:", paymentIntent.status)
 
-      res.json({
-        success: true,
-        payment_intent: {
-          id: paymentIntent.id,
+      // Si el Payment Intent requiere confirmación manual
+      if (paymentIntent.status === "requires_confirmation") {
+        // Intentar confirmar el pago
+        const confirmedPayment = await stripe.paymentIntents.confirm(paymentIntent.id, {
+          payment_method: token,
+        })
+
+        console.log("Pago confirmado:", confirmedPayment.id, "Estado:", confirmedPayment.status)
+
+        // Verificar el estado final
+        if (confirmedPayment.status === "succeeded") {
+          res.json({
+            success: true,
+            payment_intent: {
+              id: confirmedPayment.id,
+              status: confirmedPayment.status,
+              amount: confirmedPayment.amount,
+              currency: confirmedPayment.currency,
+              receipt_url: confirmedPayment.charges?.data[0]?.receipt_url || null,
+            },
+            message: "Pago procesado exitosamente",
+          })
+        } else if (confirmedPayment.status === "requires_payment_method") {
+          res.status(400).json({
+            success: false,
+            error: "El método de pago fue rechazado. Por favor, intenta con otra tarjeta.",
+            code: "PAYMENT_METHOD_REJECTED",
+            payment_intent_id: confirmedPayment.id,
+            client_secret: confirmedPayment.client_secret,
+          })
+        } else {
+          res.status(400).json({
+            success: false,
+            error: `El pago no pudo ser procesado. Estado: ${confirmedPayment.status}`,
+            code: "PAYMENT_INCOMPLETE",
+            payment_intent_id: confirmedPayment.id,
+            status: confirmedPayment.status,
+          })
+        }
+      } else if (paymentIntent.status === "succeeded") {
+        // Pago exitoso inmediatamente
+        res.json({
+          success: true,
+          payment_intent: {
+            id: paymentIntent.id,
+            status: paymentIntent.status,
+            amount: paymentIntent.amount,
+            currency: paymentIntent.currency,
+            receipt_url: paymentIntent.charges?.data[0]?.receipt_url || null,
+          },
+          message: "Pago procesado exitosamente",
+        })
+      } else {
+        // Otros estados
+        res.status(400).json({
+          success: false,
+          error: `El pago no pudo ser procesado. Estado: ${paymentIntent.status}`,
+          code: "PAYMENT_INCOMPLETE",
+          payment_intent_id: paymentIntent.id,
           status: paymentIntent.status,
-          amount: paymentIntent.amount,
-          currency: paymentIntent.currency,
-          receipt_url: paymentIntent.charges?.data[0]?.receipt_url || null,
-        },
-        message: "Pago procesado exitosamente",
-      })
+          client_secret: paymentIntent.client_secret,
+        })
+      }
     } catch (error) {
       console.error("Error procesando pago:", error)
 
@@ -191,6 +252,9 @@ export const paymentController = {
       } else if (error.type === "StripeAuthenticationError") {
         errorResponse.error = "Error de autenticación con Stripe"
         errorResponse.code = "AUTH_ERROR"
+      } else if (error.type === "StripeRateLimitError") {
+        errorResponse.error = "Demasiadas solicitudes. Intenta de nuevo en unos momentos."
+        errorResponse.code = "RATE_LIMIT"
       }
 
       res.status(400).json(errorResponse)

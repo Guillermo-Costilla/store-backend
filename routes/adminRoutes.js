@@ -4,11 +4,12 @@ import {
   obtenerOrdenesCompletas, 
   obtenerOrdenDetallada 
 } from '../controllers/adminController.js';
-import { verifyAdmin } from '../middlewares/authMiddleware.js';
+import { verifyAdmin, verifyToken } from '../middlewares/authMiddleware.js';
 
 const router = express.Router();
 
 // Proteger todas las rutas de admin con autenticación
+router.use(verifyToken);
 router.use(verifyAdmin);
 
 // Dashboard de métricas (solo admin)

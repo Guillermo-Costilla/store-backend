@@ -647,4 +647,4 @@ fetch("https://store-backend-pied.vercel.app/api/admin/dashboard", {
 - El frontend debe gestionar la sesión y el rol para mostrar u ocultar los paneles de administración.
 - El usuario admin por defecto es:  
   Email: `admin@tienda.com`  
-  Contraseña: `password123`
+  Contraseña: `password`

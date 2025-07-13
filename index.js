@@ -20,19 +20,44 @@ app.use(helmet())
 // Configuración de CORS
 const allowedOrigins = [
   "http://localhost:3000",
-  "https://store-mk.vercel.app"
+  "http://localhost:3001",
+  "http://localhost:5173",
+  "http://localhost:8080",
+  "https://store-mk.vercel.app",
+  "https://store-frontend.vercel.app",
+  "https://tu-frontend.vercel.app"
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error("Not allowed by CORS"));
+      // Permitir requests sin origin (como Postman, curl, etc.)
+      if (!origin) {
+        return callback(null, true);
       }
+      
+      // Permitir todos los localhost durante desarrollo
+      if (origin.startsWith('http://localhost:') || origin.startsWith('https://localhost:')) {
+        return callback(null, true);
+      }
+      
+      // Permitir orígenes específicos
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+      
+      // En desarrollo, permitir más orígenes
+      if (process.env.NODE_ENV === 'development') {
+        console.log('🔓 CORS: Permitiendo origen en desarrollo:', origin);
+        return callback(null, true);
+      }
+      
+      console.log('🚫 CORS: Origen bloqueado:', origin);
+      callback(new Error("Not allowed by CORS"));
     },
     credentials: true,
+    methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
   })
 );
 

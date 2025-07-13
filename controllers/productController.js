@@ -37,10 +37,20 @@ export const productController = {
       sql += " ORDER BY fecha_creacion DESC LIMIT ? OFFSET ?"
       args.push(Number.parseInt(limit), Number.parseInt(offset))
 
+      console.log('🔍 Ejecutando query:', sql, 'con args:', args);
+
       const result = await client.execute({ sql, args })
+      
+      console.log('✅ Query ejecutada exitosamente, filas obtenidas:', result.rows.length);
+      
       res.json(result.rows)
     } catch (error) {
-      res.status(500).json({ message: error.message })
+      console.error('❌ Error en getProducts:', error);
+      res.status(500).json({ 
+        message: "Error interno del servidor al obtener productos",
+        error: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      })
     }
   },
 

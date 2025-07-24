@@ -5,6 +5,14 @@ import rateLimit from "express-rate-limit"
 
 const app = express()
 
+// Webhook de Stripe (¡antes de cualquier middleware de parseo!)
+try {
+  const { paymentController } = await import("./controllers/paymentController.js")
+  app.post("/api/payments/webhook/stripe", express.raw({ type: "application/json" }), paymentController.stripeWebhook)
+} catch (error) {
+  console.error('❌ Error cargando paymentController para webhook:', error)
+}
+
 // Middlewares de seguridad
 app.use(helmet())
 
@@ -24,6 +32,8 @@ const limiter = rateLimit({
   max: 100, // límite de 100 requests por ventana por IP
 })
 app.use(limiter)
+
+
 
 // Middlewares de parseo
 app.use(express.json({ limit: "10mb" }))
@@ -90,9 +100,6 @@ try {
   app.use('/api/favoritos', favoritosRouter)
   app.use('/api/admin', adminRouter)
   app.use("/api", testRouter)
-
-  // Webhook de Stripe (especial)
-  app.post("/api/payments/webhook/stripe", express.raw({ type: "application/json" }), paymentController.stripeWebhook)
 
   console.log('✅ Rutas cargadas correctamente')
 } catch (error) {

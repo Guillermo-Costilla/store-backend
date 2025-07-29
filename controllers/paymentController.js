@@ -11,10 +11,19 @@ export const paymentController = {
   // Crear Payment Intent
   async createPaymentIntent(req, res) {
     try {
+      console.log("🔍 [DEBUG] Body completo recibido:", req.body);
+      console.log("🔍 [DEBUG] Productos recibidos:", req.body.productos);
+      console.log("🔍 [DEBUG] Tipo de productos:", typeof req.body.productos);
+      console.log("🔍 [DEBUG] Es array?", Array.isArray(req.body.productos));
+      
       const { productos, direccion, localidad, provincia, codigo_postal, customer = {}, currency = "usd" } = req.body;
       const usuario_id = req.user?.id || null;
 
+      console.log("🔍 [DEBUG] Productos después de destructuring:", productos);
+      console.log("🔍 [DEBUG] Longitud de productos:", productos?.length);
+
       if (!productos || productos.length === 0) {
+        console.log("❌ [DEBUG] Error: productos es falsy o array vacío");
         return res.status(400).json({
           success: false,
           error: "Debe incluir al menos un producto",

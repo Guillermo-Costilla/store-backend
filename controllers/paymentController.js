@@ -1,5 +1,7 @@
 import Stripe from "stripe"
 import dotenv from "dotenv"
+import { randomUUID } from 'crypto';
+import client from '../config/database.js';
 
 dotenv.config()
 
@@ -9,56 +11,106 @@ export const paymentController = {
   // Crear Payment Intent
   async createPaymentIntent(req, res) {
     try {
-      const { amount, currency = "usd", items = [], customer = {} } = req.body
+      const { productos, direccion, localidad, provincia, codigo_postal, customer = {}, currency = "usd" } = req.body;
+      const usuario_id = req.user?.id || null;
 
-      // Validaciones
-      if (!amount || amount <= 0) {
+      if (!productos || productos.length === 0) {
         return res.status(400).json({
           success: false,
-          error: "El monto debe ser mayor a 0",
-          code: "INVALID_AMOUNT",
-        })
+          error: "Debe incluir al menos un producto",
+          code: "NO_PRODUCTS",
+        });
       }
+      if (!direccion || !localidad || !provincia || !codigo_postal) {
+        return res.status(400).json({
+          success: false,
+          error: "Debe incluir todos los datos de envío: direccion, localidad, provincia, codigo_postal",
+          code: "MISSING_SHIPPING",
+        });
+      }
+
+      let total = 0;
+      const productosDetalle = [];
+      for (const item of productos) {
+        const result = await client.execute({
+          sql: "SELECT * FROM productos WHERE id = ?",
+          args: [item.producto_id],
+        });
+        const producto = result.rows[0];
+        if (!producto) {
+          return res.status(404).json({
+            success: false,
+            error: `Producto ${item.producto_id} no encontrado`,
+            code: "PRODUCT_NOT_FOUND",
+          });
+        }
+        if (producto.stock < item.cantidad) {
+          return res.status(400).json({
+            success: false,
+            error: `Stock insuficiente para ${producto.nombre}. Stock disponible: ${producto.stock}`,
+            code: "INSUFFICIENT_STOCK",
+          });
+        }
+        const subtotal = producto.precio * item.cantidad;
+        total += subtotal;
+        productosDetalle.push({
+          id: producto.id,
+          nombre: producto.nombre,
+          precio: producto.precio,
+          cantidad: item.cantidad,
+          subtotal,
+        });
+      }
+
+      // Crear la orden en la base de datos primero
+      const orden_id = randomUUID();
+      await client.execute({
+        sql: "INSERT INTO ordenes (id, usuario_id, total, productos, direccion, localidad, provincia, codigo_postal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle), direccion, localidad, provincia, codigo_postal],
+      });
 
       // Crear metadata con información del pedido
       const metadata = {
         customer_email: customer.email || "",
         customer_name: customer.name || "",
         customer_region: customer.region || "",
-        items_count: items.length.toString(),
+        items_count: productos.length.toString(),
         order_date: new Date().toISOString(),
-        orden_id: orden_id
-      }
-
-      // Agregar información de productos a metadata (limitado por Stripe)
-      if (items.length > 0) {
-        metadata.first_item = items[0].nombre || "Producto"
-        metadata.total_items = items.length.toString()
+        orden_id: orden_id,
+        usuario_id: usuario_id || "",
+      };
+      if (productos.length > 0) {
+        metadata.first_item = productos[0].nombre || "Producto";
+        metadata.total_items = productos.length.toString();
       }
 
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(amount), // Ya viene en centavos desde el frontend
+        amount: Math.round(total * 100),
         currency,
         metadata,
-        description: `Compra de ${items.length} producto(s) - ${customer.name || "Cliente"}`,
+        description: `Compra de ${productos.length} producto(s) - ${customer.name || "Cliente"}`,
         receipt_email: customer.email || undefined,
-        automatic_payment_methods: {
-          enabled: true,
-        },
-      })
+        automatic_payment_methods: { enabled: true },
+      });
 
-      console.log("Payment Intent creado:", paymentIntent.id)
+      // Actualizar la orden con el payment_intent_id
+      await client.execute({
+        sql: "UPDATE ordenes SET stripe_payment_intent_id = ? WHERE id = ?",
+        args: [paymentIntent.id, orden_id],
+      });
 
       res.json({
         success: true,
+        orden_id,
+        total,
         client_secret: paymentIntent.client_secret,
         payment_intent_id: paymentIntent.id,
         amount: paymentIntent.amount,
         currency: paymentIntent.currency,
         status: paymentIntent.status,
-      })
+      });
     } catch (error) {
-      console.error("Error creando Payment Intent:", error)
+      console.error("Error creando Payment Intent:", error);
 
       // Manejo específico de errores de Stripe
       if (error.type === "StripeCardError") {

@@ -27,6 +27,7 @@ export const paymentController = {
         customer_region: customer.region || "",
         items_count: items.length.toString(),
         order_date: new Date().toISOString(),
+        orden_id: orden_id
       }
 
       // Agregar información de productos a metadata (limitado por Stripe)

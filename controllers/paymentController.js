@@ -12,70 +12,65 @@ export const paymentController = {
   async createPaymentIntent(req, res) {
     try {
       console.log("🔍 [DEBUG] Body completo recibido:", req.body);
-      console.log("🔍 [DEBUG] Productos recibidos:", req.body.productos);
-      console.log("🔍 [DEBUG] Tipo de productos:", typeof req.body.productos);
-      console.log("🔍 [DEBUG] Es array?", Array.isArray(req.body.productos));
+      console.log("🔍 [DEBUG] Items recibidos:", req.body.items);
+      console.log("🔍 [DEBUG] Tipo de items:", typeof req.body.items);
+      console.log("🔍 [DEBUG] Es array?", Array.isArray(req.body.items));
       
-      const { productos, direccion, localidad, provincia, codigo_postal, customer = {}, currency = "usd" } = req.body;
+      const { amount, currency = "usd", items = [], customer = {} } = req.body;
       const usuario_id = req.user?.id || null;
 
-      console.log("🔍 [DEBUG] Productos después de destructuring:", productos);
-      console.log("🔍 [DEBUG] Longitud de productos:", productos?.length);
+      console.log("🔍 [DEBUG] Items después de destructuring:", items);
+      console.log("🔍 [DEBUG] Longitud de items:", items?.length);
 
-      if (!productos || productos.length === 0) {
-        console.log("❌ [DEBUG] Error: productos es falsy o array vacío");
+      if (!items || items.length === 0) {
+        console.log("❌ [DEBUG] Error: items es falsy o array vacío");
         return res.status(400).json({
           success: false,
           error: "Debe incluir al menos un producto",
           code: "NO_PRODUCTS",
         });
       }
-      if (!direccion || !localidad || !provincia || !codigo_postal) {
-        return res.status(400).json({
-          success: false,
-          error: "Debe incluir todos los datos de envío: direccion, localidad, provincia, codigo_postal",
-          code: "MISSING_SHIPPING",
-        });
-      }
 
+      // Crear la orden en la base de datos primero
+      const orden_id = randomUUID();
       let total = 0;
       const productosDetalle = [];
-      for (const item of productos) {
+      
+      for (const item of items) {
         const result = await client.execute({
           sql: "SELECT * FROM productos WHERE id = ?",
-          args: [item.producto_id],
+          args: [item.id],
         });
         const producto = result.rows[0];
         if (!producto) {
           return res.status(404).json({
             success: false,
-            error: `Producto ${item.producto_id} no encontrado`,
+            error: `Producto ${item.id} no encontrado`,
             code: "PRODUCT_NOT_FOUND",
           });
         }
-        if (producto.stock < item.cantidad) {
+        if (producto.stock < item.quantity) {
           return res.status(400).json({
             success: false,
             error: `Stock insuficiente para ${producto.nombre}. Stock disponible: ${producto.stock}`,
             code: "INSUFFICIENT_STOCK",
           });
         }
-        const subtotal = producto.precio * item.cantidad;
+        const subtotal = producto.precio * item.quantity;
         total += subtotal;
         productosDetalle.push({
           id: producto.id,
           nombre: producto.nombre,
           precio: producto.precio,
-          cantidad: item.cantidad,
+          cantidad: item.quantity,
           subtotal,
         });
       }
 
-      // Crear la orden en la base de datos primero
-      const orden_id = randomUUID();
+      // Crear la orden en la base de datos
       await client.execute({
         sql: "INSERT INTO ordenes (id, usuario_id, total, productos, direccion, localidad, provincia, codigo_postal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle), direccion, localidad, provincia, codigo_postal],
+        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle), "Dirección temporal", "Localidad temporal", "Provincia temporal", "0000"],
       });
 
       // Crear metadata con información del pedido
@@ -83,21 +78,21 @@ export const paymentController = {
         customer_email: customer.email || "",
         customer_name: customer.name || "",
         customer_region: customer.region || "",
-        items_count: productos.length.toString(),
+        items_count: items.length.toString(),
         order_date: new Date().toISOString(),
         orden_id: orden_id,
         usuario_id: usuario_id || "",
       };
-      if (productos.length > 0) {
-        metadata.first_item = productos[0].nombre || "Producto";
-        metadata.total_items = productos.length.toString();
+      if (items.length > 0) {
+        metadata.first_item = items[0].name || "Producto";
+        metadata.total_items = items.length.toString();
       }
 
       const paymentIntent = await stripe.paymentIntents.create({
-        amount: Math.round(total * 100),
+        amount: Math.round(amount), // Ya viene en centavos desde el frontend
         currency,
         metadata,
-        description: `Compra de ${productos.length} producto(s) - ${customer.name || "Cliente"}`,
+        description: `Compra de ${items.length} producto(s) - ${customer.name || "Cliente"}`,
         receipt_email: customer.email || undefined,
         automatic_payment_methods: { enabled: true },
       });
@@ -111,7 +106,7 @@ export const paymentController = {
       res.json({
         success: true,
         orden_id,
-        total,
+        total: amount / 100, // Convertir de centavos a dólares
         client_secret: paymentIntent.client_secret,
         payment_intent_id: paymentIntent.id,
         amount: paymentIntent.amount,

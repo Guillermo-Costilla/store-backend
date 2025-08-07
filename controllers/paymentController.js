@@ -2,6 +2,7 @@ import Stripe from "stripe"
 import dotenv from "dotenv"
 import { randomUUID } from 'crypto';
 import client from '../config/database.js';
+import { enviarCorreo } from "../lib/mailer.js"
 
 dotenv.config()
 
@@ -16,7 +17,7 @@ export const paymentController = {
       console.log("🔍 [DEBUG] Tipo de items:", typeof req.body.items);
       console.log("🔍 [DEBUG] Es array?", Array.isArray(req.body.items));
       
-      const { amount, currency = "usd", items = [], customer = {} } = req.body;
+      const { amount, currency = "usd", items = [], customer = {}, shipping = {} } = req.body;
       const usuario_id = req.user?.id || null;
 
       console.log("🔍 [DEBUG] Items después de destructuring:", items);
@@ -67,10 +68,20 @@ export const paymentController = {
         });
       }
 
+      // Validar datos de envío
+      const { direccion, localidad, provincia, codigo_postal } = shipping;
+      if (!direccion || !localidad || !provincia || !codigo_postal) {
+        return res.status(400).json({
+          success: false,
+          error: "Debe incluir todos los datos de envío: direccion, localidad, provincia, codigo_postal",
+          code: "MISSING_SHIPPING_DATA",
+        });
+      }
+
       // Crear la orden en la base de datos
       await client.execute({
         sql: "INSERT INTO ordenes (id, usuario_id, total, productos, direccion, localidad, provincia, codigo_postal) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle), "Dirección temporal", "Localidad temporal", "Provincia temporal", "0000"],
+        args: [orden_id, usuario_id, total, JSON.stringify(productosDetalle), direccion, localidad, provincia, codigo_postal],
       });
 
       // Crear metadata con información del pedido
@@ -101,6 +112,70 @@ export const paymentController = {
       await client.execute({
         sql: "UPDATE ordenes SET stripe_payment_intent_id = ? WHERE id = ?",
         args: [paymentIntent.id, orden_id],
+      });
+
+      // Obtener datos del usuario para el correo
+      const usuarioResult = await client.execute({
+        sql: "SELECT nombre, email FROM usuarios WHERE id = ?",
+        args: [usuario_id],
+      });
+
+      const usuario = usuarioResult.rows[0];
+
+      // Crear tabla HTML con los productos
+      const productosHTML = productosDetalle.map(producto => `
+        <tr>
+          <td style="padding: 10px; border-bottom: 1px solid #eee;">${producto.nombre}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${producto.cantidad}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">$${Number(producto.precio).toFixed(2)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">$${Number(producto.subtotal).toFixed(2)}</td>
+        </tr>
+      `).join('');
+
+      // Enviar correo de confirmación
+      await enviarCorreo({
+        to: usuario.email,
+        subject: "🎉 Confirmación de tu orden en Store",
+        html: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #333;">Hola ${usuario.nombre}, ¡gracias por tu compra!</h2>
+            
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #333;">📦 Detalles de tu orden #${orden_id}</h3>
+              
+              <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <thead>
+                  <tr style="background-color: #e9ecef;">
+                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Producto</th>
+                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Cantidad</th>
+                    <th style="padding: 10px; text-align: right; border-bottom: 2px solid #dee2e6;">Precio Unit.</th>
+                    <th style="padding: 10px; text-align: right; border-bottom: 2px solid #dee2e6;">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${productosHTML}
+                </tbody>
+                <tfoot>
+                  <tr style="background-color: #f8f9fa; font-weight: bold;">
+                    <td colspan="3" style="padding: 10px; text-align: right; border-top: 2px solid #dee2e6;">Total:</td>
+                    <td style="padding: 10px; text-align: right; border-top: 2px solid #dee2e6;">$${Number(total).toFixed(2)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #1976d2;">🚚 Información de envío</h3>
+              <p style="margin: 5px 0;"><strong>Dirección:</strong> ${direccion}</p>
+              <p style="margin: 5px 0;"><strong>Localidad:</strong> ${localidad}</p>
+              <p style="margin: 5px 0;"><strong>Provincia:</strong> ${provincia}</p>
+              <p style="margin: 5px 0;"><strong>Código Postal:</strong> ${codigo_postal}</p>
+            </div>
+
+            <p style="color: #666; font-size: 14px;">Podés seguir el estado de tu orden desde tu cuenta.</p>
+            <p style="color: #333; font-weight: bold;">¡Nos alegra tenerte como cliente! 💙</p>
+          </div>
+        `,
       });
 
       res.json({

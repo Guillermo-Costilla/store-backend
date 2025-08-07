@@ -84,14 +84,58 @@ export const orderController = {
 
       const usuario = usuarioResult.rows[0]
 
+      // Crear tabla HTML con los productos
+      const productosHTML = productosDetalle.map(producto => `
+        <tr>
+          <td style="padding: 10px; border-bottom: 1px solid #eee;">${producto.nombre}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: center;">${producto.cantidad}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">$${Number(producto.precio).toFixed(2)}</td>
+          <td style="padding: 10px; border-bottom: 1px solid #eee; text-align: right;">$${Number(producto.subtotal).toFixed(2)}</td>
+        </tr>
+      `).join('')
+
       await enviarCorreo({
         to: usuario.email,
         subject: "🎉 Confirmación de tu orden en Store",
         html: `
-          <h2>Hola ${usuario.nombre}, ¡gracias por tu compra!</h2>
-          <p>Tu orden <strong>#${orden_id}</strong> fue creada por un total de <strong>$${Number(total).toFixed(2)}</strong>.</p>
-          <p>Podés seguir el estado de tu orden desde tu cuenta.</p>
-          <p>Nos alegra tenerte como cliente 💙</p>
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <h2 style="color: #333;">Hola ${usuario.nombre}, ¡gracias por tu compra!</h2>
+            
+            <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #333;">📦 Detalles de tu orden #${orden_id}</h3>
+              
+              <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+                <thead>
+                  <tr style="background-color: #e9ecef;">
+                    <th style="padding: 10px; text-align: left; border-bottom: 2px solid #dee2e6;">Producto</th>
+                    <th style="padding: 10px; text-align: center; border-bottom: 2px solid #dee2e6;">Cantidad</th>
+                    <th style="padding: 10px; text-align: right; border-bottom: 2px solid #dee2e6;">Precio Unit.</th>
+                    <th style="padding: 10px; text-align: right; border-bottom: 2px solid #dee2e6;">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${productosHTML}
+                </tbody>
+                <tfoot>
+                  <tr style="background-color: #f8f9fa; font-weight: bold;">
+                    <td colspan="3" style="padding: 10px; text-align: right; border-top: 2px solid #dee2e6;">Total:</td>
+                    <td style="padding: 10px; text-align: right; border-top: 2px solid #dee2e6;">$${Number(total).toFixed(2)}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+            <div style="background-color: #e3f2fd; padding: 20px; border-radius: 8px; margin: 20px 0;">
+              <h3 style="margin-top: 0; color: #1976d2;">🚚 Información de envío</h3>
+              <p style="margin: 5px 0;"><strong>Dirección:</strong> ${direccion}</p>
+              <p style="margin: 5px 0;"><strong>Localidad:</strong> ${localidad}</p>
+              <p style="margin: 5px 0;"><strong>Provincia:</strong> ${provincia}</p>
+              <p style="margin: 5px 0;"><strong>Código Postal:</strong> ${codigo_postal}</p>
+            </div>
+
+            <p style="color: #666; font-size: 14px;">Podés seguir el estado de tu orden desde tu cuenta.</p>
+            <p style="color: #333; font-weight: bold;">¡Nos alegra tenerte como cliente! 💙</p>
+          </div>
         `,
       })
 
